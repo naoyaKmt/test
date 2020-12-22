@@ -1,0 +1,544 @@
+<html>
+<p>Hello Test</p>
+<!--
+@startuml
+title 再製工具管理
+left to right direction
+
+rectangle "業務" {
+actor "閲覧者" as businessPerson
+actor "管理者" as administrator
+}
+
+rectangle "再製工具管理システム" {
+usecase (確認する) as confirm
+usecase (検索する) as search
+usecase (閲覧する) as show
+usecase (ログインする) as login
+usecase (管理する) as manage
+usecase (追加する) as add
+usecase (編集する) as edit
+usecase scrap as "廃却する
+--
+工具のみ"
+usecase (削除する) as delete
+usecase (工具の状況を確認する) as confirmTools
+rectangle "ログイン後に可能" {
+usecase (工具を管理する) as manageTools
+usecase (工具種類を管理する) as manageKinds
+usecase (メーカーを管理する) as manageMakers
+usecase (作業班-エリアを管理する) as manageAreas
+usecase (ユーザを管理する) as manageUsers
+rectangle "将来構想" {
+usecase (セット工具を管理する) as manageCombo
+}
+}
+usecase (入力情報が正しいか判定する) as check
+usecase change as "工具のステータスを変更する
+--
+ステータス：利用可⇒依頼済み⇒発注連携済み⇒
+発注完了⇒再製中⇒記録待ち⇒利用可
+発注連携済み⇒発注異常⇒発注連携済み"
+usecase (工具の再製を依頼する) as request
+usecase (工具を持ち帰る) as takeout
+usecase (工具を納品する) as delivery
+usecase (工具の再製を発注する) as order
+usecase (工具に検査記録を添付する) as inspect
+}
+rectangle "現場" {
+actor "作業者" as fieldPersonnel
+actor "再製業者" as remakeTrader
+}
+package "外部システム" {
+rectangle "パスワードDB" {
+usecase (システムを使用可能か判定する) as isSystemUser
+}
+rectangle "J-Point" {
+usecase (J-Pointに連携する) as workWithJPoint
+}
+}
+
+takeout <- remakeTrader
+delivery <- remakeTrader
+request <- fieldPersonnel
+businessPerson -> confirmTools
+administrator -> manageTools
+administrator -> manageCombo
+administrator -> manageKinds
+administrator -> manageMakers
+administrator -> manageAreas
+administrator -> manageUsers
+administrator --> login
+
+confirmTools .|> confirm:extends
+manageTools .|> manage:extends
+manageCombo .|> manage:extends
+manageKinds .|> manage:extends
+manageMakers .|> manage:extends
+manageAreas .|> manage:extends
+manageUsers .|> manage:extends
+
+confirm .> search:include
+confirm .> show:include
+confirm <.u. manage:include
+manage .> add:include
+manage .> edit:include
+manage .> delete:include
+manage .> scrap:include
+login ...> isSystemUser:include
+isSystemUser -[hidden]- workWithJPoint
+workWithJPoint <. order:include
+
+add .> change:include
+edit .> change:include
+check <. change:include
+change <- request
+change <- order:定期実行
+change <- takeout
+change <- delivery
+change <- inspect:定期実行
+@enduml
+
+
+@startuml
+title 再製工具管理　データ構造
+!define mark ccfcff
+
+entity "共通" as common <<M,mark>> {
+key varchar [PK]
+--
+value varchar
+}
+entity "工具種別" as kind <<M,mark>> {
+工具種別ID int [PK]
+--
+名称 varchar
+検査記録フラグ tinyint
+セット管理フラグ tinyint
+削除フラグ tinyint
+}
+entity "メーカー" as maker <<M,mark>> {
+メーカーID int [PK]
+--
+名称 varchar
+メールアドレス1 varchar
+メールアドレス2 varchar
+削除フラグ tinyint
+}
+entity "作業班-エリア" as area <<M,mark>> {
+作業班-エリアID int [PK]
+--
+名称 varchar
+エリアコード varchar
+削除フラグ tinyint
+}
+entity "ユーザ" as user <<M,mark>> {
+ユーザID int [PK]
+--
+名称 varchar
+メールアドレス varchar
+削除フラグ tinyint
+}
+entity "工具" as tool <<T,mark>> {
+工具ID int [PK]
+--
+図面番号 varchar
+符号 varchar
+個品番号 varchar
+名称 varchar
+ステータス int
+メーカーID int
+工具種別ID int
+作業班-エリアID int
+自動発注フラグ varchar
+商品コード varchar
+初期再生回数 int
+廃却フラグ tinyint
+廃却日 varchar
+コメント varchar
+}
+entity "再製依頼" as remake <<T,mark>> {
+工具ID int [PK]
+Seq int [PK]
+--
+ステータス int
+依頼日 varchar
+発注日 varchar
+持ち帰り日 varchar
+納品日 varchar
+発注番号 varchar
+検査記録ファイル名 varchar
+検査記録フラグ tinyint
+初期検査フラグ tinyint
+依頼ユーザID int
+持ち帰りユーザID int
+納品ユーザ int
+}
+
+maker ||-{ tool
+area ||--{ tool
+tool }--|| kind
+tool ||-{ remake
+remake }--{"0...3" user
+@enduml
+
+
+@startuml
+title 再製工具管理システム ログイン
+actor 管理者
+boundary ログイン画面
+boundary 工具検索画面
+control Webアプリ
+boundary パスワードDB
+
+管理者 -> Webアプリ: 起動
+activate Webアプリ
+ログイン画面 <- Webアプリ: ログイン画面を生成
+deactivate Webアプリ
+activate ログイン画面
+管理者 <- ログイン画面: ログイン画面を表示
+管理者 -> ログイン画面: ログイン情報を入力
+管理者 -> ログイン画面: ログインボタンを押下
+ログイン画面 -> Webアプリ: ログイン：ID, パスワード
+activate Webアプリ
+Webアプリ -> パスワードDB: 判定：システムID, ID, パスワード
+Webアプリ <- パスワードDB: 判定結果
+alt ログイン失敗
+Webアプリ <- Webアプリ: 失敗理由を解釈
+ログイン画面 <- Webアプリ: メッセージを作成
+管理者 <- ログイン画面: メッセージを表示
+else ログイン成功
+工具検索画面 <- Webアプリ: 工具検索画面を生成
+activate 工具検索画面
+管理者 <- 工具検索画面: 工具検索画面を表示
+destroy ログイン画面
+end
+deactivate Webアプリ
+@enduml
+
+
+@startuml
+title 再製工具管理システム マスタ検索
+actor 管理者
+boundary マスタ画面
+control Webアプリ
+database DB
+
+activate マスタ画面
+管理者 -> マスタ画面: 検索条件を入力
+管理者 -> マスタ画面: 検索ボタンを押下
+マスタ画面 -> Webアプリ: 検索：検索条件
+activate Webアプリ
+Webアプリ -> DB: 合致するデータを要求
+Webアプリ <- DB: 合致するデータを返答
+マスタ画面 <- Webアプリ: データを表に反映
+deactivate Webアプリ
+管理者 <- マスタ画面: データを表示
+@enduml
+
+
+@startuml
+title 再製工具管理システム マスタ編集
+actor 管理者
+boundary マスタ画面
+control Webアプリ
+database DB
+
+activate マスタ画面
+管理者 -> マスタ画面: マスタ情報を入力
+管理者 -> マスタ画面: 保存ボタンを押下
+マスタ画面 -> Webアプリ: 登録：入力情報
+activate Webアプリ
+Webアプリ -> Webアプリ: 入力チェック
+alt 問題無し
+else 問題無し
+end
+Webアプリ -> DB: 入力情報を反映
+Webアプリ <- DB: 登録の成否を返答
+マスタ画面 <- Webアプリ: メッセージを反映
+deactivate Webアプリ
+管理者 <- マスタ画面: データを表示
+@enduml
+
+
+@startuml
+title 再製工具管理システム 工具検索
+actor 管理者
+boundary 工具検索画面
+control Webアプリ
+control 工具モデル
+database DB
+
+activate 工具検索画面
+管理者 -> 工具検索画面: 検索条件を入力
+管理者 -> 工具検索画面: 検索ボタンを押下
+工具検索画面 -> Webアプリ: 検索：検索条件
+activate Webアプリ
+Webアプリ -> 工具モデル: 検索処理呼び出し
+activate 工具モデル
+工具モデル -> DB: 合致するデータを要求
+工具モデル <- DB: 合致するデータを返答
+工具モデル -> 工具モデル: 工具一覧を作成
+Webアプリ <- 工具モデル: 該当工具を返答
+deactivate 工具モデル
+工具検索画面 <- Webアプリ: データを表に反映
+deactivate Webアプリ
+管理者 <- 工具検索画面: データを表示
+@enduml
+
+
+@startuml
+title 再製工具管理システム 工具編集
+actor 管理者
+boundary 工具検索画面
+control Webアプリ
+control 工具モデル
+database DB
+
+activate 工具検索画面
+管理者 -> 工具検索画面: 工具情報を入力
+管理者 -> 工具検索画面: 保存ボタンを押下
+工具検索画面 -> Webアプリ: 登録：入力情報
+activate Webアプリ
+Webアプリ -> 工具モデル: 保存処理呼び出し
+activate 工具モデル
+工具モデル -> 工具モデル: 入力チェック
+工具モデル -> DB: 入力情報を反映
+工具モデル <- DB: 登録の成否を返答
+工具モデル -> 工具モデル: 工具一覧を作成
+Webアプリ <- 工具モデル: 該当工具を返答
+deactivate 工具モデル
+工具検索画面 <- Webアプリ: データを表に反映
+deactivate Webアプリ
+管理者 <- 工具検索画面: データを表示
+@enduml
+
+
+@startuml
+title 再製工具管理　モデル
+left to right direction
+class Util {
+	..Constant..
+	+{static}Integer FLAG_ON
+	+{static}Integer FLAG_OFF
+	+{static}Integer IS_SCRAPED
+	+{static}IntegerIS_UNSPECIFIED
+	--Static Method--
+	+{static}String GetJson(Object value)
+	+{static}String WrapNull(String value)
+	+{static}String GetDateExpression(Date value)
+	+{static}Boolean IsToolCode(String value)
+	+{static}Boolean IsPhoneNumber(String value)
+	+{static}Boolean IsMailAddress(String value)
+	+{static}Boolean IsDate(String value)
+	+{static}String GetDateValue(String value)
+	+{static}String GetDateExpression(String value)
+	+{static}T GetMaster(Integer id, Dictionary(Of Integer, T) values)
+	+{static}List(Of T) GetList(T values...)
+	+{static}Boolean GetFlag(Integer value)
+	+{static}ToolStatus GetToolStatus(Integer value)
+	+{static}ProductStatus GetProductStatus(Integer value)
+	+{static}ProductKind GetProductKind(Integer value)
+	+{static}Integer GetValue(Boolean value)
+	+{static}Integer GetValue(ToolStatus value)
+	+{static}Integer GetValue(ProductStatus value)
+	+{static}Integer GetValue(ProductKind value)
+	+{static}String GetExpression(ToolStatus value)
+	+{static}String GetExpression(ProductStatus value)
+	+{static}String GetExpression(ProductKind value)
+	--Constractor--
+	-New()
+}
+class Tool {
+	--Static Method--
+	+Tool Create(Integer toolId, String drawNo, String drawSign, String individualItem, String toolName
+	, Integer toolStatus, ToolMaker maker, ToolKind kind, WorkArea area, Integer orderFlag, String itemCode
+	, Integer initialCount, Integer scrapFlag, String scrapDate, String comment)
+	--Constractor--
+	~New(Integer toolId)
+	~New(Integer toolId, String drawNo, String drawSign, String individualItem)
+	--ReadOnly Property--
+	+ID()Integer
+	+Integer StausValue()
+	+Integer MakerID()
+	+String MakerName()
+	+Integer AutoOrderValue()
+	+Integer KindID()
+	+String KindName()
+	+Integer AreaID()
+	+Integer AreaName()
+	+Integer ScrapValue()
+	+Integer SetID():
+	+Dictionary(Of Integer, String) SetMembers()
+	+String StatusExpression()
+	+Integer RemakeCount()
+	--Property--
+	+String DrawNo()
+	+String DrawSign()
+	+String IndividualItem()
+	+ToolStatus Status()
+	+ToolMaker Maker()
+	+Boolean IsAutoOrder()
+	+String ItemOrder()
+	+String Name()
+	+ToolKind Kind()
+	+WorkArea Area()
+	+Integer InitialCount()
+	+Boolean IsScraped()
+	+String ScrapDate()
+	+String Comment()
+	+List(Of ToolProduct) Products()
+	--Method--
+	+String GetInvalidDesciption()
+	+Void AddProduct(Integer productStatus, String productDate, String orderDate, String returnDate, String deliveryDate
+	, Integer inspectionFlag, String inspectionFile, Integer kindFlag)
+	+Void AddProduct(ToolProduct value)
+}
+class ToolProduct {
+	--Static Method--
+	+Tool Create(Integer productStatus, String poductDate, String orderDate, String returnDate, String deliveryDate
+	, Integer inspectionFlag, String inspectionFile, Integer kindFlag)
+	--Constractor--
+	~New()
+	--Property--
+	+ProductStatus Status()
+	+String ProductDate()
+	+String OrderDate()
+	+String ReturnDate()
+	+String DeliveryDate()
+	+String OrderNumber()
+	+Boolean NeedInspectionRecord()
+	+String InspectionRecordFile()
+	+ProductKind Kind()
+	+User ProductWorker()
+	+User ReturnWorker()
+	+User DeliveryWorker()
+	--Method--
+	+String GetInvalidDesciption()
+}
+class Master {
+	--Static Method--
+	+{static}Integer GetID(Master value)
+	+{static}String GetID(Master value)
+	--Constractor--
+	#New(Integer masterId)
+	--Property--
+	+Integer ID()
+	+String Name()
+	+Boolean IsDeleted()
+}
+package マスタ <<Rectangle>> {
+class ToolKind {
+	--Constractor--
+	+New(Integer kindId)
+	+New(Integer kindId, String kindName)
+	--Property--
+	+Boolean NeedsInspectRecord()
+	+Boolean NeedsSetManagement()
+}
+class ToolMaker {
+	--Constractor--
+	+New(Integer makerId)
+	+New(Integer makerId, String makerCode)
+	--Property--
+	+String Code()
+	+String MailAddress1()
+	+String MailAddress2()
+}
+class WorkArea {
+	--Constractor--
+	+New(Integer areaId)
+	+New(Integer areaId, String areaCode)
+	--Property--
+	+String Code()
+	+String DepartmentName()
+	+String InstructionNumber()
+	+String OutsideCallingNumber()
+	+String ExtensionNumber()
+	+String OutsideFaxNumber()
+}
+class User {
+	--Constractor--
+	+New(Integer userId)
+	+New(Integer userId, String userNumber)
+	--Property--
+	+String Number()
+	+String Address()
+}
+}
+class ToolDAO {
+	--Constractor--
+	+New(String connectionString)
+	+New(String connectionString, String dummyDate, String dummyOrderNumber)
+	--Method--
+	+List(Of Tool) GetTools(Integer statusValue, Integer orderFlag)
+	+List(Of Tool) GetTools(String drawNo, String drawSign, String individualItem, Integer statusValue
+	, Integer areaId, Integer makerId, Integer kindId, String deliveryDateForm, String deliveryDateTo, String qrCode)
+	+Tool GetTool(Integer toolId)
+	+List(Of String) SaveTools(List(Of Diectionary(Of String, String)) values)
+	+String SaveTool(Integer toolId, String drawNo, String drawSign, String individualItem, Integer toolStatus
+	, Integer makerId, Integer kindId, Integer areaId, Integer orderFlag, String itemCode, Integer initialCount
+	, String toolName, Integer scrapFlag, String scrapDate, String comment, List(Of Diectionary(Of String, String)) products)
+	+String DeleteTool(Integer toolId)
+	+Dictionary(Of Integer String) GetSetableTools(Integer toolId
+	, String drawNo, String drawSign, String individualItem)
+	+String SaveSet(Integer setId, List(Of Integer) toolIds)
+	+String DeleteSet(Integer setId)
+	+String GetInvalidDescription(Integer statusValue, Integer areaId, String qrCode)
+	+String ChangeStatus(Integer statusValue, Integer areaId, Integer userId, List(Of String) qrCodes)
+	+String ChangeStatus(Integer statusValue, String importDate, List(Of String) qrCodes)
+	+String GetInventoryData(Integer areaId)
+	+Dictionary(Of Integer, ToolMaker) GetMakerMaster()
+	+Dictionary(Of Integer, ToolKind) GetKindMaster()
+	+Dictionary(Of Integer, WorkArea) GetAreaMaster()
+	+Dictionary(Of Integer, User) GetUserMaster()
+	+List(Of Tool) GetDummyTools()
+}
+package 列挙子 <<Rectangle>> {
+enum ToolStatus {
+	USABLE,
+	REQUESTED,
+	RELATED,
+	ORDERED,
+	RETURING,
+	INSPECTING,
+	ERROR_ON_ORDER
+}
+enum ProductStatus {
+	REQUESTED,
+	RELATED,
+	ORDERED,
+	RETURING,
+	INSPECTING,
+	FINISHED,
+	ERROR_ON_ORDER
+}
+enum ProductKind {
+	PRODUCT,
+	INITIAL
+}
+}
+
+Master <|-- ToolMaker
+Master <|-- ToolKind
+Master <|-- WorkArea
+Master <|-- User
+ToolMaker -[hidden] ToolKind
+ToolKind -[hidden] WorkArea
+WorkArea -[hidden] User
+ToolMaker - Tool
+ToolKind -- Tool
+WorkArea - Tool
+User - ToolProduct
+Comparable_Tool_ ()- Tool
+Tool -- ToolDAO:< Operate
+Tool *- ToolProduct
+Tool -- ToolStatus
+ToolProduct -() Comparable_ToolProduct_
+ToolProduct -- ProductStatus
+ToolProduct -- ProductKind
+ToolStatus -[hidden] ProductStatus
+ProductStatus -[hidden] ProductKind
+@enduml
+-->
+</html>
